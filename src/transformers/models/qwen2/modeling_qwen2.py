@@ -452,8 +452,15 @@ class Qwen2Model(Qwen2PreTrainedModel):
 
         self.embed_tokens = nn.Embedding(config.vocab_size, config.hidden_size, self.padding_idx)
         self.layers = nn.ModuleList(
-            [Qwen2DecoderLayer(config, layer_idx) for layer_idx in range(config.num_hidden_layers)]
+            [Qwen2DecoderLayer(config, layer_idx) for layer_idx in range(int(0.5 * config.num_hidden_layers))]  # 修改层数为一半
         )
+        # 后一半层参数
+        shared_layers = nn.ModuleList(
+            [Qwen2DecoderLayer(config, layer_idx=i + int(0.5 * config.num_hidden_layers)) for i in range(int(0.5 * config.num_hidden_layers))]  
+        )
+        # 共享参数
+        for i in range(3):
+            self.layers.extend(shared_layers)
         self.norm = Qwen2RMSNorm(config.hidden_size, eps=config.rms_norm_eps)
         self.rotary_emb = Qwen2RotaryEmbedding(config=config)
         self.gradient_checkpointing = False
@@ -522,12 +529,21 @@ class Qwen2Model(Qwen2PreTrainedModel):
 
         hidden_states = inputs_embeds
 
+        output_shape = 
+
         # create position embeddings to be shared across the decoder layers
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
 
         # decoder layers
         all_hidden_states = () if output_hidden_states else None
         all_self_attns = () if output_attentions else None
+
+        all_hiddenstates = []
+        layer_indices = [
+            len(self.layers) // 2 -1,  # 二分之一层
+            3 * len(self.layers) // 4 -1,  # 四分之三层
+            len(self.layers) - 1  # 最后一层
+        ]
 
         for decoder_layer in self.layers[: self.config.num_hidden_layers]:
             if output_hidden_states:
@@ -559,6 +575,9 @@ class Qwen2Model(Qwen2PreTrainedModel):
                 )
 
             hidden_states = layer_outputs[0]
+
+            if decoder_layer in layer_indices:
+                all_hiddenstates.append(self.norm(hidden_states).view(output_shape))
 
             if output_attentions:
                 all_self_attns += (layer_outputs[1],)
