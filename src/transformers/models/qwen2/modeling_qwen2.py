@@ -529,7 +529,14 @@ class Qwen2Model(Qwen2PreTrainedModel):
 
         hidden_states = inputs_embeds
 
-        output_shape = 
+        if input_ids is not None:
+            input_shape = input_ids.size()
+        elif inputs_embeds is not None:
+            input_shape = inputs_embeds.size()[:-1]
+        else:
+            raise ValueError("You have to specify either input_ids or inputs_embeds")
+        
+        output_shape = (-1,) + input_shape[1:] + (hidden_states.size(-1),)
 
         # create position embeddings to be shared across the decoder layers
         position_embeddings = self.rotary_emb(hidden_states, position_ids)
@@ -593,7 +600,7 @@ class Qwen2Model(Qwen2PreTrainedModel):
             past_key_values=past_key_values if use_cache else None,
             hidden_states=all_hidden_states,
             attentions=all_self_attns,
-        )
+        ), all_hiddenstates
 
     def _update_causal_mask(
         self,
