@@ -846,7 +846,7 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
         )
 
         # decoder outputs consists of (dec_features, layer_state, dec_hidden, dec_attn)
-        outputs: BaseModelOutputWithPast = self.model(
+        outputs, all_hiddenstates = self.model(
             input_ids=input_ids,
             attention_mask=attention_mask,
             position_ids=position_ids,
@@ -856,6 +856,7 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
             cache_position=cache_position,
+            return_dict=False,
             **kwargs,
         )
 
@@ -864,9 +865,22 @@ class Qwen2ForCausalLM(Qwen2PreTrainedModel, GenerationMixin):
         slice_indices = slice(-logits_to_keep, None) if isinstance(logits_to_keep, int) else logits_to_keep
         logits = self.lm_head(hidden_states[:, slice_indices, :])
 
+        logits_es = []
+        for hiddenstate in all_hiddenstates:
+            temp_logits = self.lm_head(hiddenstate)
+            logits_es.append(temp_logits)
+
+        all_loss = []
+
         loss = None
         if labels is not None:
-            loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            loss = 0
+            for idx, logit in enumerate(logits_es):
+                temp_loss = self.loss_function(logits=logit, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+                all_loss.append(temp_loss.item())
+                loss += temp_loss
+            #loss = self.loss_function(logits=logits, labels=labels, vocab_size=self.config.vocab_size, **kwargs)
+            loss /= len(logits_es)
 
         return CausalLMOutputWithPast(
             loss=loss,
